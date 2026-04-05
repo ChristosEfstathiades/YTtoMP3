@@ -6,6 +6,8 @@ import { FormEvent, useState } from "react";
 
 export default function App() {
     const [url, setUrl] = useState("");
+    const [title, setTitle] = useState("");
+    const [artist, setArtist] = useState("");
     const [status, setStatus] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -21,7 +23,11 @@ export default function App() {
         setStatus("Starting download...");
 
         try {
-            const result = await (window as any).electron.downloadMp3(url);
+            const result = await (window as any).electron.downloadMp3({
+                url,
+                title: title.trim() || undefined,
+                artist: artist.trim() || undefined,
+            });
             setStatus(result.message ?? "Download complete.");
         } catch (error) {
             setStatus(
@@ -53,6 +59,22 @@ export default function App() {
                     value={url}
                     onChange={(event) => setUrl(event.target.value)}
                     label="URL"
+                    variant="outlined"
+                    fullWidth
+                    disabled={loading}
+                />
+                <TextField
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    label="Title (optional)"
+                    variant="outlined"
+                    fullWidth
+                    disabled={loading}
+                />
+                <TextField
+                    value={artist}
+                    onChange={(event) => setArtist(event.target.value)}
+                    label="Artist (optional)"
                     variant="outlined"
                     fullWidth
                     disabled={loading}
