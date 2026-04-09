@@ -2,7 +2,14 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { FormEvent, useState } from "react";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import Paper from "@mui/material/Paper";
+import { FormEvent, useState, useEffect } from "react";
 
 export default function App() {
     const [url, setUrl] = useState("");
@@ -10,6 +17,43 @@ export default function App() {
     const [artist, setArtist] = useState("");
     const [status, setStatus] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [history, setHistory] = useState<Array<{id: number, title: string, artist: string, url: string}>>([]);
+
+    useEffect(() => {
+        fetchHistory();
+
+        const handleFocus = async () => {
+            try {
+                const clipboardText = await (window as any).electron.getClipboard();
+                if (clipboardText && clipboardText.startsWith('http') && !url) {
+                    setUrl(clipboardText);
+                }
+            } catch (error) {
+                // Ignore clipboard errors
+            }
+        };
+
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
+    }, [url]);
+
+    const fetchHistory = async () => {
+        try {
+            const data = await (window as any).electron.getHistory();
+            setHistory(data);
+        } catch (error) {
+            console.error('Failed to fetch history:', error);
+        }
+    };
+
+    const handleDelete = async (id: number) => {
+        try {
+            await (window as any).electron.deleteHistory(id);
+            fetchHistory();
+        } catch (error) {
+            console.error('Failed to delete:', error);
+        }
+    };
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -20,18 +64,21 @@ export default function App() {
         }
 
         setLoading(true);
-        setStatus("Starting download...");
+        setStatus("Adding to queue...");
 
         try {
-            const result = await (window as any).electron.downloadMp3({
+            const result = await (window as any).electron.addToQueue({
                 url,
                 title: title.trim() || undefined,
                 artist: artist.trim() || undefined,
             });
-            setStatus(result.message ?? "Download complete.");
+            setStatus(result.message ?? "Added to queue.");
+            setUrl("");
+            setTitle("");
+            setArtist("");
         } catch (error) {
             setStatus(
-                error instanceof Error ? error.message : "Download failed.",
+                error instanceof Error ? error.message : "Failed to add to queue.",
             );
         } finally {
             setLoading(false);
@@ -84,6 +131,37 @@ export default function App() {
                 </Button>
             </Box>
             {status ? <Typography>{status}</Typography> : null}
+            {history.length > 0 && (
+                <Box sx={{ mt: 4 }}>
+                    <Typography variant="h5">Download History</Typography>
+                    <TableContainer component={Paper}>
+                        <Table>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell>Title</TableCell>
+                                    <TableCell>Artist</TableCell>
+                                    <TableCell>URL</TableCell>
+                                    <TableCell>Actions</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {history.map((row) => (
+                                    <TableRow key={row.id}>
+                                        <TableCell>{row.title}</TableCell>
+                                        <TableCell>{row.artist}</TableCell>
+                                        <TableCell>{row.url}</TableCell>
+                                        <TableCell>
+                                            <Button onClick={() => handleDelete(row.id)} color="error">
+                                                Delete
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </Box>
+            )}
         </Box>
     );
 }
