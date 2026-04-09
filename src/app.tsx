@@ -18,6 +18,8 @@ export default function App() {
     const [status, setStatus] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [history, setHistory] = useState<Array<{id: number, title: string, artist: string, url: string}>>([]);
+    const [queue, setQueue] = useState<Array<{url: string, title?: string, artist?: string}>>([]);
+    const [currentDownloading, setCurrentDownloading] = useState<{url: string, title?: string, artist?: string} | null>(null);
 
     useEffect(() => {
         fetchHistory();
@@ -37,12 +39,42 @@ export default function App() {
         return () => window.removeEventListener('focus', handleFocus);
     }, [url]);
 
+    useEffect(() => {
+        const fetchData = async () => {
+            fetchHistory();
+            fetchQueue();
+            fetchCurrentDownloading();
+        };
+
+        fetchData();
+        const interval = setInterval(fetchData, 2000);
+        return () => clearInterval(interval);
+    }, []);
+
     const fetchHistory = async () => {
         try {
             const data = await (window as any).electron.getHistory();
             setHistory(data);
         } catch (error) {
             console.error('Failed to fetch history:', error);
+        }
+    };
+
+    const fetchQueue = async () => {
+        try {
+            const data = await (window as any).electron.getQueue();
+            setQueue(data);
+        } catch (error) {
+            console.error('Failed to fetch queue:', error);
+        }
+    };
+
+    const fetchCurrentDownloading = async () => {
+        try {
+            const data = await (window as any).electron.getCurrentDownloading();
+            setCurrentDownloading(data);
+        } catch (error) {
+            console.error('Failed to fetch current downloading:', error);
         }
     };
 
@@ -72,10 +104,14 @@ export default function App() {
                 title: title.trim() || undefined,
                 artist: artist.trim() || undefined,
             });
-            setStatus(result.message ?? "Added to queue.");
-            setUrl("");
-            setTitle("");
-            setArtist("");
+            if (result.success) {
+                setStatus(result.message ?? "Added to queue.");
+                setUrl("");
+                setTitle("");
+                setArtist("");
+            } else {
+                setStatus(result.message);
+            }
         } catch (error) {
             setStatus(
                 error instanceof Error ? error.message : "Failed to add to queue.",
@@ -131,6 +167,36 @@ export default function App() {
                 </Button>
             </Box>
             {status ? <Typography>{status}</Typography> : null}
+            {queue.length > 0 && (
+                <Box sx={{ mt: 4 }}>
+                    <Typography variant="h5">Download Queue</Typography>
+                    <TableContainer component={Paper}>
+                        <Table>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell>Title</TableCell>
+                                    <TableCell>Artist</TableCell>
+                                    <TableCell>URL</TableCell>
+                                    <TableCell>Status</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {queue.map((row, index) => {
+                                    const isDownloading = currentDownloading && currentDownloading.url === row.url;
+                                    return (
+                                        <TableRow key={index}>
+                                            <TableCell>{row.title || 'Unknown'}</TableCell>
+                                            <TableCell>{row.artist || 'Unknown'}</TableCell>
+                                            <TableCell>{row.url}</TableCell>
+                                            <TableCell>{isDownloading ? 'Downloading' : 'Queued'}</TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </Box>
+            )}
             {history.length > 0 && (
                 <Box sx={{ mt: 4 }}>
                     <Typography variant="h5">Download History</Typography>
