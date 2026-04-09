@@ -53,6 +53,8 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^7.3.9",
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.8.0",
     "electron-squirrel-startup": "^1.0.1",
     "node-id3": "^0.2.9",
     "react": "^19.2.4",
