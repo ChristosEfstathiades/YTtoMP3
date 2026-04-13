@@ -9,6 +9,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
+import { useLocalStorage } from "@uidotdev/usehooks";
 import { FormEvent, useState, useEffect } from "react";
 
 export default function App() {
@@ -17,17 +18,31 @@ export default function App() {
     const [artist, setArtist] = useState("");
     const [status, setStatus] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [history, setHistory] = useState<Array<{id: number, title: string, artist: string, url: string}>>([]);
-    const [queue, setQueue] = useState<Array<{url: string, title?: string, artist?: string}>>([]);
-    const [currentDownloading, setCurrentDownloading] = useState<{url: string, title?: string, artist?: string} | null>(null);
+    const [downloadDirectory, setDownloadDirectory] = useLocalStorage<string>(
+        'downloadDirectory',
+        '',
+    );
+    const [history, setHistory] = useState<
+        Array<{ id: number; title: string; artist: string; url: string }>
+    >([]);
+    const [queue, setQueue] = useState<
+        Array<{ url: string; title?: string; artist?: string; directory: string }>
+    >([]);
+    const [currentDownloading, setCurrentDownloading] = useState<{
+        url: string;
+        title?: string;
+        artist?: string;
+    } | null>(null);
 
     useEffect(() => {
         fetchHistory();
 
         const handleFocus = async () => {
             try {
-                const clipboardText = await (window as any).electron.getClipboard();
-                if (clipboardText && clipboardText.startsWith('http') && !url) {
+                const clipboardText = await (
+                    window as any
+                ).electron.getClipboard();
+                if (clipboardText && clipboardText.startsWith("http") && !url) {
                     setUrl(clipboardText);
                 }
             } catch (error) {
@@ -35,8 +50,8 @@ export default function App() {
             }
         };
 
-        window.addEventListener('focus', handleFocus);
-        return () => window.removeEventListener('focus', handleFocus);
+        window.addEventListener("focus", handleFocus);
+        return () => window.removeEventListener("focus", handleFocus);
     }, [url]);
 
     useEffect(() => {
@@ -56,7 +71,7 @@ export default function App() {
             const data = await (window as any).electron.getHistory();
             setHistory(data);
         } catch (error) {
-            console.error('Failed to fetch history:', error);
+            console.error("Failed to fetch history:", error);
         }
     };
 
@@ -65,7 +80,7 @@ export default function App() {
             const data = await (window as any).electron.getQueue();
             setQueue(data);
         } catch (error) {
-            console.error('Failed to fetch queue:', error);
+            console.error("Failed to fetch queue:", error);
         }
     };
 
@@ -74,7 +89,7 @@ export default function App() {
             const data = await (window as any).electron.getCurrentDownloading();
             setCurrentDownloading(data);
         } catch (error) {
-            console.error('Failed to fetch current downloading:', error);
+            console.error("Failed to fetch current downloading:", error);
         }
     };
 
@@ -83,12 +98,30 @@ export default function App() {
             await (window as any).electron.deleteHistory(id);
             fetchHistory();
         } catch (error) {
-            console.error('Failed to delete:', error);
+            console.error("Failed to delete:", error);
+        }
+    };
+
+    const handleSelectDirectory = async () => {
+        try {
+            const selected = await (window as any).electron.selectDownloadDirectory();
+            if (selected) {
+                setDownloadDirectory(selected);
+                setStatus(`Download directory saved: ${selected}`);
+            }
+        } catch (error) {
+            console.error("Directory selection failed:", error);
+            setStatus("Failed to select download directory.");
         }
     };
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+
+        if (!downloadDirectory) {
+            setStatus("Please select a download directory before continuing.");
+            return;
+        }
 
         if (!url.trim()) {
             setStatus("Please enter a URL.");
@@ -103,6 +136,7 @@ export default function App() {
                 url,
                 title: title.trim() || undefined,
                 artist: artist.trim() || undefined,
+                directory: downloadDirectory,
             });
             if (result.success) {
                 setStatus(result.message ?? "Added to queue.");
@@ -114,7 +148,9 @@ export default function App() {
             }
         } catch (error) {
             setStatus(
-                error instanceof Error ? error.message : "Failed to add to queue.",
+                error instanceof Error
+                    ? error.message
+                    : "Failed to add to queue.",
             );
         } finally {
             setLoading(false);
@@ -138,6 +174,20 @@ export default function App() {
                 onSubmit={handleSubmit}
                 sx={{ display: "flex", flexDirection: "column", gap: 2 }}
             >
+                <Button
+                    variant="outlined"
+                    onClick={handleSelectDirectory}
+                    disabled={loading}
+                >
+                    {downloadDirectory
+                        ? "Change download directory"
+                        : "Select download directory"}
+                </Button>
+                {downloadDirectory ? (
+                    <Typography sx={{ wordBreak: 'break-all' }}>
+                        Download folder: {downloadDirectory}
+                    </Typography>
+                ) : null}
                 <TextField
                     value={url}
                     onChange={(event) => setUrl(event.target.value)}
@@ -182,13 +232,23 @@ export default function App() {
                             </TableHead>
                             <TableBody>
                                 {queue.map((row, index) => {
-                                    const isDownloading = currentDownloading && currentDownloading.url === row.url;
+                                    const isDownloading =
+                                        currentDownloading &&
+                                        currentDownloading.url === row.url;
                                     return (
                                         <TableRow key={index}>
-                                            <TableCell>{row.title || 'Unknown'}</TableCell>
-                                            <TableCell>{row.artist || 'Unknown'}</TableCell>
+                                            <TableCell>
+                                                {row.title || "Unknown"}
+                                            </TableCell>
+                                            <TableCell>
+                                                {row.artist || "Unknown"}
+                                            </TableCell>
                                             <TableCell>{row.url}</TableCell>
-                                            <TableCell>{isDownloading ? 'Downloading' : 'Queued'}</TableCell>
+                                            <TableCell>
+                                                {isDownloading
+                                                    ? "Downloading"
+                                                    : "Queued"}
+                                            </TableCell>
                                         </TableRow>
                                     );
                                 })}
@@ -217,7 +277,12 @@ export default function App() {
                                         <TableCell>{row.artist}</TableCell>
                                         <TableCell>{row.url}</TableCell>
                                         <TableCell>
-                                            <Button onClick={() => handleDelete(row.id)} color="error">
+                                            <Button
+                                                onClick={() =>
+                                                    handleDelete(row.id)
+                                                }
+                                                color="error"
+                                            >
                                                 Delete
                                             </Button>
                                         </TableCell>
