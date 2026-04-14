@@ -56,6 +56,8 @@ const downloadQueue: Array<{
     title?: string;
     artist?: string;
     directory: string;
+    startTime?: string;
+    endTime?: string;
 }> = [];
 let isProcessing = false;
 let currentDownloading: {
@@ -63,6 +65,10 @@ let currentDownloading: {
     title?: string;
     artist?: string;
 } | null = null;
+
+// Progress tracking
+let currentProgress = 0;
+let mainWindow: BrowserWindow | null = null;
 
 function getMetadata(url: string): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -91,22 +97,56 @@ function getMetadata(url: string): Promise<any> {
     });
 }
 
-function downloadMp3(url: string, output: string): Promise<void> {
+function downloadMp3(
+    url: string,
+    output: string,
+    startTime?: string,
+    endTime?: string,
+): Promise<void> {
     return new Promise((resolve, reject) => {
-        const proc = spawn("yt-dlp", [
+        const args = [
             "-x",
             "--no-keep-video",
             "--audio-format",
             "mp3",
             "--output",
             output,
-            url,
-        ]);
+        ];
+
+        // Add download-sections if start or end time is provided
+        if (startTime || endTime) {
+            const start = startTime || "0:00";
+            const end = endTime || "100%";
+            args.push("--download-sections", `*${start}-${end}`);
+        }
+
+        args.push(url);
+
+        const proc = spawn("yt-dlp", args);
         let stderr = "";
-        proc.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+        proc.stderr.on("data", (chunk: Buffer) => {
+            const chunkStr = chunk.toString();
+            stderr += chunkStr;
+
+            // Parse progress percentage from yt-dlp output
+            // yt-dlp outputs progress like: [download] 25.5% of ~1234MiB at 1.23MiB/s
+            const progressMatch = chunkStr.match(/\[download\]\s+([\d.]+)%/);
+            if (progressMatch) {
+                const progress = Math.min(
+                    Math.round(parseFloat(progressMatch[1])),
+                    100,
+                );
+                currentProgress = progress;
+                if (mainWindow) {
+                    mainWindow.webContents.send("download-progress", progress);
+                }
+            }
+        });
         proc.on("close", (code: number) => {
-            if (code === 0) resolve();
-            else
+            if (code === 0) {
+                currentProgress = 0;
+                resolve();
+            } else
                 reject(
                     new Error(
                         `Download failed: ${stderr.trim() || `code ${code}`}`,
@@ -140,8 +180,17 @@ async function downloadItem(item: {
     title?: string;
     artist?: string;
     directory: string;
+    startTime?: string;
+    endTime?: string;
 }) {
-    const { url, title: customTitle, artist: customArtist, directory } = item;
+    const {
+        url,
+        title: customTitle,
+        artist: customArtist,
+        directory,
+        startTime,
+        endTime,
+    } = item;
     const downloadDirectory =
         typeof directory === "string" ? directory.trim() : "";
 
@@ -167,7 +216,7 @@ async function downloadItem(item: {
 
     // Download MP3 to temp
     const tempOutput = path.join(tempDir, "temp_download.mp3");
-    await downloadMp3(url, tempOutput);
+    await downloadMp3(url, tempOutput, startTime, endTime);
 
     // Download thumbnail to temp
     const thumbnailPath = path.join(tempDir, "temp_thumb.jpg");
@@ -242,6 +291,8 @@ ipcMain.handle(
             title?: string;
             artist?: string;
             directory: string;
+            startTime?: string;
+            endTime?: string;
         },
     ) => {
         if (!data.directory || !data.directory.trim()) {
@@ -301,7 +352,7 @@ if (require("electron-squirrel-startup")) {
 
 const createWindow = (): void => {
     // Create the browser window.
-    const mainWindow = new BrowserWindow({
+    const window = new BrowserWindow({
         height: 600,
         width: 800,
         webPreferences: {
@@ -309,11 +360,13 @@ const createWindow = (): void => {
         },
     });
 
+    mainWindow = window;
+
     // and load the index.html of the app.
-    mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+    window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
     // Open the DevTools.
-    mainWindow.webContents.openDevTools();
+    window.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished

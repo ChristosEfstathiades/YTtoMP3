@@ -9,6 +9,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
+import LinearProgress from "@mui/material/LinearProgress";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { FormEvent, useState, useEffect } from "react";
 
@@ -19,20 +20,28 @@ export default function App() {
     const [status, setStatus] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [downloadDirectory, setDownloadDirectory] = useLocalStorage<string>(
-        'downloadDirectory',
-        '',
+        "downloadDirectory",
+        "",
     );
     const [history, setHistory] = useState<
         Array<{ id: number; title: string; artist: string; url: string }>
     >([]);
     const [queue, setQueue] = useState<
-        Array<{ url: string; title?: string; artist?: string; directory: string }>
+        Array<{
+            url: string;
+            title?: string;
+            artist?: string;
+            directory: string;
+        }>
     >([]);
     const [currentDownloading, setCurrentDownloading] = useState<{
         url: string;
         title?: string;
         artist?: string;
     } | null>(null);
+    const [startTime, setStartTime] = useState("");
+    const [endTime, setEndTime] = useState("");
+    const [currentProgress, setCurrentProgress] = useState(0);
 
     useEffect(() => {
         fetchHistory();
@@ -64,6 +73,16 @@ export default function App() {
         fetchData();
         const interval = setInterval(fetchData, 2000);
         return () => clearInterval(interval);
+    }, []);
+
+    // Listen for progress updates
+    useEffect(() => {
+        const unsubscribe = (window as any).electron?.onDownloadProgress?.(
+            (progress: number) => {
+                setCurrentProgress(progress);
+            },
+        );
+        return () => unsubscribe?.();
     }, []);
 
     const fetchHistory = async () => {
@@ -104,7 +123,9 @@ export default function App() {
 
     const handleSelectDirectory = async () => {
         try {
-            const selected = await (window as any).electron.selectDownloadDirectory();
+            const selected = await (
+                window as any
+            ).electron.selectDownloadDirectory();
             if (selected) {
                 setDownloadDirectory(selected);
                 setStatus(`Download directory saved: ${selected}`);
@@ -137,12 +158,17 @@ export default function App() {
                 title: title.trim() || undefined,
                 artist: artist.trim() || undefined,
                 directory: downloadDirectory,
+                startTime: startTime.trim() || undefined,
+                endTime: endTime.trim() || undefined,
             });
             if (result.success) {
                 setStatus(result.message ?? "Added to queue.");
                 setUrl("");
                 setTitle("");
                 setArtist("");
+                setStartTime("");
+                setEndTime("");
+                setCurrentProgress(0);
             } else {
                 setStatus(result.message);
             }
@@ -184,7 +210,7 @@ export default function App() {
                         : "Select download directory"}
                 </Button>
                 {downloadDirectory ? (
-                    <Typography sx={{ wordBreak: 'break-all' }}>
+                    <Typography sx={{ wordBreak: "break-all" }}>
                         Download folder: {downloadDirectory}
                     </Typography>
                 ) : null}
@@ -212,12 +238,30 @@ export default function App() {
                     fullWidth
                     disabled={loading}
                 />
+                <TextField
+                    value={startTime}
+                    onChange={(event) => setStartTime(event.target.value)}
+                    label="Start Time (optional, HH:MM:SS or seconds)"
+                    variant="outlined"
+                    fullWidth
+                    disabled={loading}
+                    placeholder="0:00"
+                />
+                <TextField
+                    value={endTime}
+                    onChange={(event) => setEndTime(event.target.value)}
+                    label="End Time (optional, HH:MM:SS or seconds)"
+                    variant="outlined"
+                    fullWidth
+                    disabled={loading}
+                    placeholder="End of video"
+                />
                 <Button type="submit" variant="contained" disabled={loading}>
                     {loading ? "Downloading…" : "Download MP3"}
                 </Button>
             </Box>
             {status ? <Typography>{status}</Typography> : null}
-            {queue.length > 0 && (
+            {(currentDownloading || queue.length > 0) && (
                 <Box sx={{ mt: 4 }}>
                     <Typography variant="h5">Download Queue</Typography>
                     <TableContainer component={Paper}>
@@ -231,27 +275,51 @@ export default function App() {
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {queue.map((row, index) => {
-                                    const isDownloading =
-                                        currentDownloading &&
-                                        currentDownloading.url === row.url;
-                                    return (
-                                        <TableRow key={index}>
-                                            <TableCell>
-                                                {row.title || "Unknown"}
-                                            </TableCell>
-                                            <TableCell>
-                                                {row.artist || "Unknown"}
-                                            </TableCell>
-                                            <TableCell>{row.url}</TableCell>
-                                            <TableCell>
-                                                {isDownloading
-                                                    ? "Downloading"
-                                                    : "Queued"}
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
+                                {currentDownloading && (
+                                    <TableRow key="current">
+                                        <TableCell>
+                                            {currentDownloading.title ||
+                                                "Unknown"}
+                                        </TableCell>
+                                        <TableCell>
+                                            {currentDownloading.artist ||
+                                                "Unknown"}
+                                        </TableCell>
+                                        <TableCell>
+                                            {currentDownloading.url}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Box
+                                                sx={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 1,
+                                                }}
+                                            >
+                                                <LinearProgress
+                                                    variant="determinate"
+                                                    value={currentProgress}
+                                                    sx={{ flex: 1 }}
+                                                />
+                                                <Typography variant="body2">
+                                                    {currentProgress}%
+                                                </Typography>
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                {queue.map((row, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell>
+                                            {row.title || "Unknown"}
+                                        </TableCell>
+                                        <TableCell>
+                                            {row.artist || "Unknown"}
+                                        </TableCell>
+                                        <TableCell>{row.url}</TableCell>
+                                        <TableCell>Queued</TableCell>
+                                    </TableRow>
+                                ))}
                             </TableBody>
                         </Table>
                     </TableContainer>
