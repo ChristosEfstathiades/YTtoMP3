@@ -23,18 +23,18 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 function getBinPath() {
-  const base = app.isPackaged
-    ? process.resourcesPath
-    : path.join(__dirname, "..", "..");
+    const base = app.isPackaged
+        ? process.resourcesPath
+        : path.join(__dirname, "..", "..");
 
-  let platform : string = process.platform;
-  console.log(platform)
+    let platform: string = process.platform;
+    console.log(platform);
 
-  if (platform === "win32") platform = "win";
-  if (platform === "darwin") platform = "mac";
-  if (platform === "linux") platform = "linux";
+    if (platform === "win32") platform = "win";
+    if (platform === "darwin") platform = "mac";
+    if (platform === "linux") platform = "linux";
 
-  return path.join(base, "src/bin", platform);
+    return path.join(base, "src/bin", platform);
 }
 
 // Database setup
@@ -52,7 +52,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS downloads (
 function checkYtDlp(): Promise<void> {
     const binPath = getBinPath();
     return new Promise((resolve, reject) => {
-        const proc = spawn(path.join(binPath, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp"), ["--version"]);
+        const proc = spawn(
+            path.join(
+                binPath,
+                process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
+            ),
+            ["--version"],
+        );
         proc.on("close", (code: number) => {
             if (code === 0) {
                 resolve();
