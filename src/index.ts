@@ -22,6 +22,21 @@ import NodeID3 from "node-id3";
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
+function getBinPath() {
+  const base = app.isPackaged
+    ? process.resourcesPath
+    : __dirname;
+
+  let platform : string = process.platform;
+  console.log(platform)
+
+  if (platform === "win32") platform = "win";
+  if (platform === "darwin") platform = "mac";
+  if (platform === "linux") platform = "linux";
+
+  return path.join(base, "bin", platform);
+}
+
 // Database setup
 const userDataPath = app.getPath("userData");
 const dbPath = path.join("", "downloads.db");
@@ -35,8 +50,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS downloads (
 
 // Check if yt-dlp is available
 function checkYtDlp(): Promise<void> {
+    const binPath = getBinPath();
     return new Promise((resolve, reject) => {
-        const proc = spawn("yt-dlp", ["--version"]);
+        const proc = spawn(path.join(binPath, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp"), ["--version"]);
         proc.on("close", (code: number) => {
             if (code === 0) {
                 resolve();
