@@ -25,7 +25,7 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 function getBinPath() {
   const base = app.isPackaged
     ? process.resourcesPath
-    : __dirname;
+    : path.join(__dirname, "..", "..");
 
   let platform : string = process.platform;
   console.log(platform)
@@ -34,7 +34,7 @@ function getBinPath() {
   if (platform === "darwin") platform = "mac";
   if (platform === "linux") platform = "linux";
 
-  return path.join(base, "bin", platform);
+  return path.join(base, "src/bin", platform);
 }
 
 // Database setup
