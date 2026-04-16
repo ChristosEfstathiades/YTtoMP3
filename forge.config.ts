@@ -15,7 +15,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     extraResource: [
-      'resources/bin'
+      'src/bin'
     ]
   },
   rebuildConfig: {},
