@@ -34,7 +34,7 @@ function getBinPath() {
     if (platform === "darwin") platform = "mac";
     if (platform === "linux") platform = "linux";
 
-    return path.join(base, "src/bin", platform);
+    return path.join(base, "bin", platform);
 }
 
 // Database setup
@@ -53,10 +53,8 @@ function checkYtDlp(): Promise<void> {
     const binPath = getBinPath();
     return new Promise((resolve, reject) => {
         const proc = spawn(
-            path.join(
-                binPath,
-                process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
-            ),
+            process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
+
             ["--version"],
         );
         proc.on("close", (code: number) => {
@@ -388,7 +386,7 @@ const createWindow = (): void => {
     window.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
     // Open the DevTools.
-    window.webContents.openDevTools();
+    // window.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished
