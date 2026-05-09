@@ -125,55 +125,98 @@ function downloadMp3(
 ): Promise<void> {
     return new Promise((resolve, reject) => {
         const args = [
+            // Extract audio and convert to MP3
             "-x",
-            "--no-keep-video",
             "--audio-format",
             "mp3",
+            "--no-keep-video",
+
+            // Use FFmpeg as the downloader so only the requested
+            // time range is fetched instead of downloading the full video.
+            "--downloader",
+            "ffmpeg",
+
+            // Output path
             "--output",
             output,
         ];
 
-        // Add download-sections if start or end time is provided
+        // If clipping is requested, download only that section.
+        // This is the key optimization.
         if (startTime || endTime) {
             const start = startTime || "0:00";
             const end = endTime || "100%";
             args.push("--download-sections", `*${start}-${end}`);
         }
 
+        // Optional: prefer audio-only format to avoid fetching video streams.
+        // This reduces bandwidth and speeds up processing.
+        args.push("-f", "bestaudio/best");
+
+        // Final URL
         args.push(url);
 
-        const proc = spawn("yt-dlp", args);
+        console.log("Running yt-dlp:", args.join(" "));
+
+        const proc = spawn("yt-dlp", args, {
+            windowsHide: true,
+        });
+
         let stderr = "";
+
         proc.stderr.on("data", (chunk: Buffer) => {
             const chunkStr = chunk.toString();
             stderr += chunkStr;
 
-            // Parse progress percentage from yt-dlp output
-            // yt-dlp outputs progress like: [download] 25.5% of ~1234MiB at 1.23MiB/s
+            // Parse download progress from yt-dlp output
+            // Example: [download] 25.5% of ...
             const progressMatch = chunkStr.match(/\[download\]\s+([\d.]+)%/);
             if (progressMatch) {
                 const progress = Math.min(
                     Math.round(parseFloat(progressMatch[1])),
                     100,
                 );
+
                 currentProgress = progress;
-                if (mainWindow) {
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send("download-progress", progress);
                 }
             }
+
+            // FFmpeg sometimes prints "size=" instead of standard yt-dlp progress.
+            // If clipping finishes very quickly, the normal progress output may be minimal.
+            if (
+                chunkStr.includes("Destination:") &&
+                mainWindow &&
+                !mainWindow.isDestroyed()
+            ) {
+                mainWindow.webContents.send("download-progress", 1);
+            }
         });
+
         proc.on("close", (code: number) => {
+            currentProgress = 0;
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("download-progress", 100);
+            }
+
             if (code === 0) {
-                currentProgress = 0;
                 resolve();
-            } else
+            } else {
                 reject(
                     new Error(
                         `Download failed: ${stderr.trim() || `code ${code}`}`,
                     ),
                 );
+            }
         });
-        proc.on("error", reject);
+
+        proc.on("error", (err) => {
+            currentProgress = 0;
+            reject(err);
+        });
     });
 }
 
