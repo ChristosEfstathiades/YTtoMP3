@@ -39,7 +39,12 @@ function getBinPath() {
 
 // Database setup
 const userDataPath = app.getPath("userData");
-const dbPath = path.join("", "downloads.db");
+
+if (!existsSync(userDataPath)) {
+    mkdirSync(userDataPath, { recursive: true });
+}
+
+const dbPath = path.join(userDataPath, "downloads.db");
 const db = new Database(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS downloads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,108 +121,208 @@ function getMetadata(url: string): Promise<any> {
         proc.on("error", reject);
     });
 }
-
 function downloadMp3(
     url: string,
     output: string,
     startTime?: string,
     endTime?: string,
 ): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // 1. Ask yt-dlp for the direct audio stream URL
+            const directAudioUrl = await getDirectAudioUrl(url);
+
+            // 2. Build FFmpeg arguments
+            const args: string[] = [
+                "-y", // overwrite output if it exists
+            ];
+
+            // Fast input seek (critical optimization)
+            if (startTime) {
+                args.push("-ss", startTime);
+            }
+
+            // Input URL
+            args.push("-i", directAudioUrl);
+
+            // Stop at the requested end time
+            if (endTime) {
+                if (startTime) {
+                    // When both start and end are provided, use duration (-t)
+                    const duration = computeDuration(startTime, endTime);
+                    args.push("-t", duration);
+                } else {
+                    // If only end time is provided, use absolute end (-to)
+                    args.push("-to", endTime);
+                }
+            }
+            args.push(
+                "-vn", // no video
+                "-acodec",
+                "libmp3lame",
+                "-q:a",
+                "2", // high quality VBR
+                output,
+            );
+
+            console.log("Running ffmpeg:", args.join(" "));
+
+            const proc = spawn("ffmpeg", args, {
+                windowsHide: true,
+            });
+
+            let stderr = "";
+
+            proc.stderr.on("data", (chunk: Buffer) => {
+                const text = chunk.toString();
+                stderr += text;
+
+                // Parse FFmpeg progress from "time=HH:MM:SS.xx"
+                const match = text.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+
+                if (match && startTime && endTime) {
+                    const hours = parseInt(match[1], 10);
+                    const minutes = parseInt(match[2], 10);
+                    const seconds = parseFloat(match[3]);
+
+                    const currentSeconds =
+                        hours * 3600 + minutes * 60 + seconds;
+
+                    const totalSeconds =
+                        timeToSeconds(endTime) - timeToSeconds(startTime);
+
+                    if (totalSeconds > 0) {
+                        const progress = Math.min(
+                            Math.round((currentSeconds / totalSeconds) * 100),
+                            100,
+                        );
+
+                        currentProgress = progress;
+
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send(
+                                "download-progress",
+                                progress,
+                            );
+                        }
+                    }
+                }
+            });
+
+            proc.on("close", (code: number) => {
+                currentProgress = 0;
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("download-progress", 100);
+                }
+
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(
+                        new Error(
+                            `FFmpeg failed: ${stderr.trim() || `code ${code}`}`,
+                        ),
+                    );
+                }
+            });
+
+            proc.on("error", reject);
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+function getDirectAudioUrl(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const args = [
-            // Extract audio and convert to MP3
-            "-x",
-            "--audio-format",
-            "mp3",
-            "--no-keep-video",
-
-            // Use FFmpeg as the downloader so only the requested
-            // time range is fetched instead of downloading the full video.
-            "--downloader",
-            "ffmpeg",
-
-            // Output path
-            "--output",
-            output,
+            "-f",
+            "bestaudio/best",
+            "-g", // print direct media URL
+            url,
         ];
-
-        // If clipping is requested, download only that section.
-        // This is the key optimization.
-        if (startTime || endTime) {
-            const start = startTime || "0:00";
-            const end = endTime || "100%";
-            args.push("--download-sections", `*${start}-${end}`);
-        }
-
-        // Optional: prefer audio-only format to avoid fetching video streams.
-        // This reduces bandwidth and speeds up processing.
-        args.push("-f", "bestaudio/best");
-
-        // Final URL
-        args.push(url);
-
-        console.log("Running yt-dlp:", args.join(" "));
 
         const proc = spawn("yt-dlp", args, {
             windowsHide: true,
         });
 
+        let stdout = "";
         let stderr = "";
 
+        proc.stdout.on("data", (chunk: Buffer) => {
+            stdout += chunk.toString();
+        });
+
         proc.stderr.on("data", (chunk: Buffer) => {
-            const chunkStr = chunk.toString();
-            stderr += chunkStr;
-
-            // Parse download progress from yt-dlp output
-            // Example: [download] 25.5% of ...
-            const progressMatch = chunkStr.match(/\[download\]\s+([\d.]+)%/);
-            if (progressMatch) {
-                const progress = Math.min(
-                    Math.round(parseFloat(progressMatch[1])),
-                    100,
-                );
-
-                currentProgress = progress;
-
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send("download-progress", progress);
-                }
-            }
-
-            // FFmpeg sometimes prints "size=" instead of standard yt-dlp progress.
-            // If clipping finishes very quickly, the normal progress output may be minimal.
-            if (
-                chunkStr.includes("Destination:") &&
-                mainWindow &&
-                !mainWindow.isDestroyed()
-            ) {
-                mainWindow.webContents.send("download-progress", 1);
-            }
+            stderr += chunk.toString();
         });
 
         proc.on("close", (code: number) => {
-            currentProgress = 0;
-
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send("download-progress", 100);
-            }
-
             if (code === 0) {
-                resolve();
+                const directUrl = stdout.trim().split(/\r?\n/)[0];
+
+                if (!directUrl) {
+                    reject(new Error("yt-dlp returned an empty media URL."));
+                    return;
+                }
+
+                resolve(directUrl);
             } else {
                 reject(
                     new Error(
-                        `Download failed: ${stderr.trim() || `code ${code}`}`,
+                        `Failed to get direct audio URL: ${stderr.trim() || `code ${code}`}`,
                     ),
                 );
             }
         });
 
-        proc.on("error", (err) => {
-            currentProgress = 0;
-            reject(err);
-        });
+        proc.on("error", reject);
     });
+}
+
+function timeToSeconds(time: string): number {
+    const parts = time.split(":").map(Number);
+
+    if (parts.some(isNaN)) {
+        throw new Error(`Invalid time format: ${time}`);
+    }
+
+    if (parts.length === 3) {
+        const [h, m, s] = parts;
+        return h * 3600 + m * 60 + s;
+    }
+
+    if (parts.length === 2) {
+        const [m, s] = parts;
+        return m * 60 + s;
+    }
+
+    if (parts.length === 1) {
+        return parts[0];
+    }
+
+    throw new Error(`Invalid time format: ${time}`);
+}
+
+function secondsToTime(totalSeconds: number): string {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return [hours, minutes, seconds]
+        .map((n) => Math.floor(n).toString().padStart(2, "0"))
+        .join(":");
+}
+
+function computeDuration(start: string, end: string): string {
+    const durationSeconds = timeToSeconds(end) - timeToSeconds(start);
+
+    if (durationSeconds <= 0) {
+        throw new Error("End time must be greater than start time.");
+    }
+
+    return secondsToTime(durationSeconds);
 }
 
 function downloadThumbnail(url: string, output: string): Promise<void> {
