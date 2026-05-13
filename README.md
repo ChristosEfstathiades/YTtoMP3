@@ -8,13 +8,16 @@
   
   This is my first ever time using LLMs heavily in my own personal development since this is a pretty trivial project that I don't think is worth spending too much time on.
 
-  ## Releases 
+  ## Installation 
 
-  I will add binary releases for windows and linux ubuntu soon.
+  Look in releases for install files for Windows/Linux
+  Windows - saggysonic-1.0.0.Setup.exe 
+  Debian - saggysonic_1.0.0_amd64.deb 
+  RPM - saggysonic-1.0.0-1.x86_64.rpm 
 
   ## Building from source
   
-  For now you can build from source by cloning and running
+  You can build from source by running
   ```
   git clone https://github.com/ChristosEfstathiades/YTtoMP3.git
   cd YTtoMP3
