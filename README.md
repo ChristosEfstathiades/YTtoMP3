@@ -10,10 +10,10 @@
 
   ## Installation 
 
-  Look in releases for install files for Windows/Linux
-  Windows - saggysonic-1.0.0.Setup.exe 
-  Debian - saggysonic_1.0.0_amd64.deb 
-  RPM - saggysonic-1.0.0-1.x86_64.rpm 
+  Look in releases for install files for Windows/Linux  
+  Windows - saggysonic-1.0.0.Setup.exe  
+  Debian - saggysonic_1.0.0_amd64.deb  
+  RPM - saggysonic-1.0.0-1.x86_64.rpm  
 
   ## Building from source
   
