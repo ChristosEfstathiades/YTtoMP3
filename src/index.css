@@ -1,22 +1,28 @@
-/* src/index.css */
 @import "tailwindcss";
-
-/* @theme {
-  /* This overrides the default 'white' background variable in Tailwind */
-/* --color-background: #000000; */
-
-/* You can also add custom brand colors here */
-/* --color-electron-blue: #9feaf9; */
-/* }  */
-
-/* @layer base {
-  body {
-    @apply bg-background text-white;
-  }
-} */
 
 body {
     font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-        sans-serif;
+        "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica,
+        Arial, sans-serif;
+}
+
+::selection {
+    background: rgba(255, 176, 46, 0.3);
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(242, 231, 215, 0.15);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(242, 231, 215, 0.25);
 }
