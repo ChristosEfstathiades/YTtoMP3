@@ -33,6 +33,43 @@ export function resolveBinary(name: BinaryName): string {
     return existsSync(bundled) ? bundled : name;
 }
 
+let ytDlpUpdate: Promise<void> | null = null;
+
+/**
+ * yt-dlp goes stale quickly: YouTube reworks its player every few months, and
+ * an out-of-date build falls back to a client whose media URLs reject the
+ * open-ended range request ffmpeg makes, so downloads die with a 403. Let the
+ * bundled copy update itself in place, once per app run.
+ *
+ * Packaged builds only: in development the binary is the checked-in copy, and
+ * rewriting it would dirty the working tree.
+ */
+export function refreshYtDlp(): Promise<void> {
+    if (ytDlpUpdate) {
+        return ytDlpUpdate;
+    }
+    if (!app.isPackaged) {
+        ytDlpUpdate = Promise.resolve();
+        return ytDlpUpdate;
+    }
+    ytDlpUpdate = new Promise<void>((resolve) => {
+        // A failed update (offline, read-only install folder) is not fatal;
+        // the bundled build still gets its chance at the download. The cap
+        // stops a slow mirror from stalling the queue indefinitely.
+        const timer = setTimeout(resolve, 60000);
+        const finish = () => {
+            clearTimeout(timer);
+            resolve();
+        };
+        const proc = spawn(resolveBinary("yt-dlp"), ["-U"], {
+            windowsHide: true,
+        });
+        proc.on("close", finish);
+        proc.on("error", finish);
+    });
+    return ytDlpUpdate;
+}
+
 function canRun(command: string, args: string[]): Promise<boolean> {
     return new Promise((resolve) => {
         const proc = spawn(command, args, { windowsHide: true });

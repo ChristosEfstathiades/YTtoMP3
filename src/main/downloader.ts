@@ -16,7 +16,7 @@ import path from "path";
 import NodeID3 from "node-id3";
 import { timeToSeconds } from "../shared/time";
 import type { DownloadStage, QueueItem } from "../shared/types";
-import { resolveBinary } from "./binaries";
+import { refreshYtDlp, resolveBinary } from "./binaries";
 
 export interface TrackMetadata {
     title?: string;
@@ -39,13 +39,22 @@ export interface DownloadHooks {
     }) => void;
 }
 
+// ffmpeg echoes the whole media URL when a request fails, which buries the
+// one useful line under a wall of query string.
+function withoutUrls(text: string): string {
+    return text.replace(/https?:\/\/\S+/g, "<media url>");
+}
+
 function lastLines(text: string, count: number): string {
     return text.trim().split(/\r?\n/).slice(-count).join("\n");
 }
 
-function runYtDlp(args: string[]): Promise<string> {
+async function runYtDlp(args: string[]): Promise<string> {
+    await refreshYtDlp();
     return new Promise((resolve, reject) => {
-        const proc = spawn(resolveBinary("yt-dlp"), args, {
+        // --no-update only silences the "your build is old" banner; the
+        // updating itself is left to refreshYtDlp.
+        const proc = spawn(resolveBinary("yt-dlp"), ["--no-update", ...args], {
             windowsHide: true,
         });
         let stdout = "";
@@ -173,13 +182,15 @@ function encodeToMp3(options: {
         proc.on("close", (code: number) => {
             if (code === 0) {
                 resolve();
-            } else {
-                reject(
-                    new Error(
-                        `ffmpeg failed: ${lastLines(stderr, 3) || `code ${code}`}`,
-                    ),
-                );
+                return;
             }
+            // A 403 here means the media URL yt-dlp handed over was refused,
+            // which in practice means yt-dlp itself needs to be newer.
+            const hint = stderr.includes("403 Forbidden")
+                ? " YouTube refused the media request; restart the app so yt-dlp can update itself."
+                : "";
+            const detail = lastLines(withoutUrls(stderr), 3) || `code ${code}`;
+            reject(new Error(`ffmpeg failed: ${detail}${hint}`));
         });
 
         proc.on("error", (err) =>

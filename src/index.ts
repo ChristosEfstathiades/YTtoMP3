@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from "electron";
+import { refreshYtDlp } from "./main/binaries";
 import { initDatabase } from "./main/db";
 import { registerIpcHandlers } from "./main/ipc";
 import { setBroadcast } from "./main/queue";
@@ -46,6 +47,9 @@ registerIpcHandlers();
 app.on("ready", () => {
     initDatabase();
     createWindow();
+    // Downloads await this, so starting it now means it has usually finished
+    // by the time the first link is pasted.
+    void refreshYtDlp();
 });
 
 app.on("window-all-closed", () => {
